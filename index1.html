@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tertiary Sales Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --accent: #f59e0b;
+            --dark: #1e1b4b;
+            --light: #f8fafc;
+            --success: #10b981;
+            --danger: #ef4444;
+            --glass: rgba(255, 255, 255, 0.1);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--dark);
+            overflow-x: hidden;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            color: white;
+            position: relative;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+        .subtitle { font-size: 1.2rem; opacity: 0.9; font-weight: 300; }
+        .sync-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-top: 15px;
+            backdrop-filter: blur(10px);
+        }
+        .sync-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: blink 2s infinite;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; margin-top: 30px; }
+        @media (max-width: 968px) { .grid { grid-template-columns: 1fr; } }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+        .card-title {
+            font-size: 1.5rem;
+            color: var(--dark);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+        }
+        .icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+        }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #4b5563; font-size: 0.95rem; }
+        input, select {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1); }
+        .file-input-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
+        .file-input-wrapper input[type=file] { position: absolute; left: -9999px; }
+        .file-input-label {
+            display: block;
+            padding: 40px 20px;
+            border: 3px dashed #cbd5e1;
+            border-radius: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+        }
+        .file-input-label:hover { border-color: var(--primary); background: #eef2ff; transform: scale(1.02); }
+        .file-input-label.has-file { border-color: var(--success); background: #ecfdf5; color: var(--success); }
+        .preview-image { max-width: 100%; max-height: 200px; border-radius: 12px; margin-top: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none; }
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-success { background: linear-gradient(135deg, var(--success), #059669); color: white; margin-top: 10px; }
+        .btn-danger { background: linear-gradient(135deg, var(--danger), #dc2626); color: white; margin-top: 10px; }
+        .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .chart-container { position: relative; height: 400px; margin-top: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .stat-card {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .stat-value { font-size: 2rem; font-weight: 800; margin-bottom: 5px; }
+        .stat-label { font-size: 0.9rem; opacity: 0.9; }
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .data-table th, .data-table td { padding: 14px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        .data-table th { background: #f8fafc; font-weight: 700; color: #4b5563; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
+        .data-table tr:hover { background: #f9fafb; }
+        .data-table td { font-size: 0.95rem; color: #374151; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+        .badge-blinkit { background: #fef3c7; color: #92400e; }
+        .badge-swiggy { background: #fee2e2; color: #991b1b; }
+        .badge-amazon-seller { background: #dbeafe; color: #1e40af; }
+        .badge-amazon-vendor { background: #e0e7ff; color: #3730a3; }
+        .badge-bigbasket { background: #d1fae5; color: #065f46; }
+        .loading { display: none; text-align: center; padding: 20px; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #e5e7eb; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: white;
+            padding: 20px 30px;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            display: none;
+            align-items: center;
+            gap: 15px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            border-left: 4px solid var(--success);
+        }
+        @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .toast.error { border-left-color: var(--danger); }
+        .progress-bar { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-top: 15px; display: none; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); width: 0%; transition: width 0.3s ease; }
+        .ocr-status { margin-top: 10px; font-size: 0.9rem; color: #6b7280; font-style: italic; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
+        .tab { padding: 10px 20px; border: none; background: none; cursor: pointer; font-weight: 600; color: #6b7280; border-radius: 8px; transition: all 0.3s ease; }
+        .tab.active { background: var(--primary); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
+        .empty-state-icon { font-size: 4rem; margin-bottom: 20px; opacity: 0.5; }
+        .setup-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            backdrop-filter: blur(5px);
+        }
+        .setup-content {
+            background: white;
+            padding: 40px;
+            border-radius: 24px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+        }
+        .setup-content h2 { margin-bottom: 20px; color: var(--dark); }
+        .setup-content ol { margin-left: 20px; line-height: 2; color: #4b5563; }
+        .setup-content code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: var(--primary); }
+        .hidden { display: none !important; }
+        .live-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            z-index: 100;
+        }
+        .live-dot { width: 10px; height: 10px; background: var(--success); border-radius: 50%; animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        .delete-btn { background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; opacity: 0; transition: opacity 0.3s; }
+        .data-table tr:hover .delete-btn { opacity: 1; }
+        @media (max-width: 640px) { h1 { font-size: 2rem; } .stats-grid { grid-template-columns: 1fr; } .filters { grid-template-columns: 1fr; } .live-indicator { top: 10px; right: 10px; font-size: 0.8rem; padding: 8px 12px; } }
+    </style>
+</head>
+<body>
+    <div id="setupModal" class="setup-modal">
+        <div class="setup-content">
+            <h2>Firebase Setup Required</h2>
+            <p style="margin-bottom: 20px; color: #6b7280;">To enable real-time team sync, create a free Firebase project:</p>
+            <ol>
+                <li>Go to <a href="https://console.firebase.google.com" target="_blank" style="color: var(--primary);">console.firebase.google.com</a></li>
+                <li>Click "Create Project" and name it</li>
+                <li>Click "Build" → "Realtime Database" → "Create Database"</li>
+                <li>Choose "Start in test mode"</li>
+                <li>Click Settings (gear icon) → General</li>
+                <li>Click "</>" (Web app) and copy the values below:</li>
+            </ol>
+            <div class="form-group" style="margin-top: 20px;">
+                <label>API Key</label>
+                <input type="text" id="firebaseApiKey" placeholder="AIzaSy...">
+            </div>
+            <div class="form-group">
+                <label>Database URL</label>
+                <input type="text" id="firebaseDbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com">
+            </div>
+            <div class="form-group">
+                <label>Project ID</label>
+                <input type="text" id="firebaseProjectId" placeholder="your-project-id">
+            </div>
+            <button class="btn btn-primary" onclick="saveFirebaseConfig()" style="margin-top: 10px;">Connect to Firebase</button>
+        </div>
+    </div>
+    <div class="live-indicator" id="liveIndicator" style="display: none;">
+        <div class="live-dot"></div>
+        <span>Live Sync</span>
+    </div>
+    <div class="container">
+        <header>
+            <h1>Tertiary Sales Tracker</h1>
+            <p class="subtitle">Real-Time Team Collaboration</p>
+            <div class="sync-badge" id="connectionStatus">
+                <span class="sync-indicator"></span>
+                <span>Connecting...</span>
+            </div>
+        </header>
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon">📸</div>
+                    Submit Sales Data
+                </div>
+                <form id="salesForm">
+                    <div class="form-group">
+                        <label>Channel</label>
+                        <select id="channel" required>
+                            <option value="">Select Channel</option>
+                            <option value="Blinkit">Blinkit</option>
+                            <option value="Swiggy">Swiggy</option>
+                            <option value="Amazon Seller">Amazon Seller</option>
+                            <option value="Amazon Vendor">Amazon Vendor</option>
+                            <option value="Big Basket">Big Basket</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Upload Photo</label>
+                        <div class="file-input-wrapper">
+                            <input type="file" id="photoInput" accept="image/*" capture="environment">
+                            <label for="photoInput" class="file-input-label" id="fileLabel">
+                                <div style="font-size: 2rem; margin-bottom: 10px;">📷</div>
+                                <div>Click to take photo</div>
+                            </label>
+                        </div>
+                        <img id="preview" class="preview-image">
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="ocr-status" id="ocrStatus"></div>
+                    </div>
+                    <div class="form-group" id="manualEntry" style="display: none;">
+                        <label>Manual Entry</label>
+                        <textarea id="manualData" rows="4" placeholder="Item, Qty, Revenue" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e5e7eb;"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Save Data</button>
+                    <button type="button" class="btn btn-success" onclick="toggleManual()">Manual Entry</button>
+                </form>
+                <div class="loading" id="processing">
+                    <div class="spinner"></div>
+                    <div>Processing...</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon">📈</div>
+                    Dashboard
+                </div>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('chart')">Chart</button>
+                    <button class="tab" onclick="switchTab('table')">Table</button>
+                </div>
+                <div class="filters">
+                    <div class="form-group" style="margin: 0;">
+                        <label>Channel</label>
+                        <select id="filterChannel" onchange="updateDashboard()">
+                            <option value="all">All</option>
+                            <option value="Blinkit">Blinkit</option>
+                            <option value="Swiggy">Swiggy</option>
+                            <option value="Amazon Seller">Amazon Seller</option>
+                            <option value="Amazon Vendor">Amazon Vendor</option>
+                            <option value="Big Basket">Big Basket</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Item</label>
+                        <select id="filterItem" onchange="updateDashboard()">
+                            <option value="all">All Items</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>From</label>
+                        <input type="date" id="filterDateFrom" onchange="updateDashboard()">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>To</label>
+                        <input type="date" id="filterDateTo" onchange="updateDashboard()">
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalRevenue">₹0</div>
+                        <div class="stat-label">Revenue</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalQty">0</div>
+                        <div class="stat-label">Units</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalTransactions">0</div>
+                        <div class="stat-label">Transactions</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="avgOrderValue">₹0</div>
+                        <div class="stat-label">Avg Order</div>
+                    </div>
+                </div>
+                <div id="chartTab" class="tab-content active">
+                    <div class="chart-container">
+                        <canvas id="salesChart"></canvas>
+                    </div>
+                </div>
+                <div id="tableTab" class="tab-content">
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button class="btn btn-success" onclick="downloadCSV()" style="width: auto; padding: 10px 20px;">Download CSV</button>
+                        <button class="btn btn-danger" onclick="clearAllData()" style="width: auto; padding: 10px 20px;">Clear All</button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table" id="dataTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Channel</th>
+                                    <th>Item</th>
+                                    <th>Qty</th>
+                                    <th>Revenue</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="toast" id="toast">
+        <span id="toastIcon">✅</span>
+        <span id="toastMessage">Success</span>
+    </div>
+    <script>
+        let salesData = [], chartInstance = null, extractedData = [], db = null, isConnected = false;
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('date').valueAsDate = new Date();
+            const config = localStorage.getItem('firebaseConfig');
+            if (config) {
+                document.getElementById('setupModal').classList.add('hidden');
+                initializeFirebase(JSON.parse(config));
+            }
+            document.getElementById('photoInput').addEventListener('change', handleFileSelect);
+            document.getElementById('salesForm').addEventListener('submit', handleSubmit);
+        });
+        function saveFirebaseConfig() {
+            const apiKey = document.getElementById('firebaseApiKey').value.trim();
+            const databaseURL = document.getElementById('firebaseDbUrl').value.trim();
+            const projectId = document.getElementById('firebaseProjectId').value.trim();
+            if (!apiKey || !databaseURL || !projectId) {
+                showToast('Fill all fields', 'error');
+                return;
+            }
+            const config = { apiKey, databaseURL, projectId };
+            localStorage.setItem('firebaseConfig', JSON.stringify(config));
+            document.getElementById('setupModal').classList.add('hidden');
+            initializeFirebase(config);
+        }
+        function initializeFirebase(config) {
+            try {
+                const firebaseConfig = {
+                    apiKey: config.apiKey,
+                    authDomain: config.projectId + '.firebaseapp.com',
+                    databaseURL: config.databaseURL,
+                    projectId: config.projectId,
+                    storageBucket: config.projectId + '.appspot.com',
+                    messagingSenderId: '000000000000',
+                    appId: '1:000000000000:web:0000000000000000000000'
+                };
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                db.ref('sales').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    salesData = data ? Object.values(data) : [];
+                    updateItemFilter();
+                    updateDashboard();
+                    if (!isConnected) {
+                        isConnected = true;
+                        updateConnectionStatus(true);
+                        showToast('Connected!', 'success');
+                    }
+                }, (error) => {
+                    updateConnectionStatus(false);
+                    showToast('Connection error', 'error');
+                });
+                document.getElementById('liveIndicator').style.display = 'flex';
+            } catch (error) {
+                showToast('Firebase init failed', 'error');
+                document.getElementById('setupModal').classList.remove('hidden');
+            }
+        }
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            status.innerHTML = connected ? '<span class="sync-indicator" style="background: var(--success);"></span><span>Live Sync Active</span>' : '<span class="sync-indicator" style="background: var(--danger);"></span><span>Disconnected</span>';
+        }
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const label = document.getElementById('fileLabel');
+            const preview = document.getElementById('preview');
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+            const ocrStatus = document.getElementById('ocrStatus');
+            const processing = document.getElementById('processing');
+            const submitBtn = document.getElementById('submitBtn');
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                label.classList.add('has-file');
+                label.innerHTML = '<div style="color: var(--success); font-weight: 600;">Image loaded</div>';
+            };
+            reader.readAsDataURL(file);
+            processing.style.display = 'block';
+            progressBar.style.display = 'block';
+            ocrStatus.textContent = 'Processing...';
+            submitBtn.disabled = true;
+            Tesseract.recognize(file, 'eng', {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        progressFill.style.width = (m.progress * 100) + '%';
+                        ocrStatus.textContent = 'Processing: ' + Math.round(m.progress * 100) + '%';
+                    }
+                }
+            }).then(({ data: { text } }) => {
+                processing.style.display = 'none';
+                progressBar.style.display = 'none';
+                ocrStatus.textContent = 'OCR Complete!';
+                submitBtn.disabled = false;
+                extractedData = parseOCRText(text);
+                if (extractedData.length > 0) {
+                    showToast('Found ' + extractedData.length + ' items', 'success');
+                    document.getElementById('manualData').value = extractedData.map(d => d.item + ', ' + d.qty + ', ' + d.revenue).join('\n');
+                    document.getElementById('manualEntry').style.display = 'block';
+                } else {
+                    showToast('No data found, enter manually', 'error');
+                    document.getElementById('manualEntry').style.display = 'block';
+                }
+            }).catch(err => {
+                processing.style.display = 'none';
+                progressBar.style.display = 'none';
+                ocrStatus.textContent = 'OCR failed, enter manually';
+                submitBtn.disabled = false;
+                document.getElementById('manualEntry').style.display = 'block';
+            });
+        }
+        function parseOCRText(text) {
+            const lines = text.split('\n').filter(line => line.trim());
+            const results = [];
+            const patterns = [
+                /([A-Za-z\s]+)\s+(\d+)\s+(\d+(?:\.\d{2})?)/,
+                /([A-Za-z\s]+)[,|\s]+(\d+)[,|\s]+(\d+(?:\.\d{2})?)/,
+                /(\d+)\s+([A-Za-z\s]+)\s+(\d+(?:\.\d{2})?)/
+            ];
+            lines.forEach(line => {
+                for (let pattern of patterns) {
+                    const match = line.match(pattern);
+                    if (match) {
+                        const item = match[1].trim();
+                        const qty = parseInt(match[2]) || 0;
+                        const revenue = parseFloat(match[3]) || 0;
+                        if (item && qty > 0) {
+                            results.push({ item, qty, revenue });
+                            break;
+                        }
+                    }
+                }
+            });
+            return results;
+        }
+        function toggleManual() {
+            const manual = document.getElementById('manualEntry');
+            manual.style.display = manual.style.display === 'none' ? 'block' : 'none';
+            document.getElementById('submitBtn').disabled = false;
+        }
+        function handleSubmit(e) {
+            e.preventDefault();
+            if (!db) {
+                showToast('Not connected to database', 'error');
+                return;
+            }
+            const channel = document.getElementById('channel').value;
+            const date = document.getElementById('date').value;
+            const manualData = document.getElementById('manualData').value;
+            if (!channel || !date) {
+                showToast('Fill all fields', 'error');
+                return;
+            }
+            let items = [];
+            if (extractedData.length > 0) {
+                items = extractedData;
+            } else if (manualData.trim()) {
+                const lines = manualData.split('\n');
+                lines.forEach(line => {
+                    const parts = line.split(',').map(p => p.trim());
+                    if (parts.length >= 3) {
+                        items.push({ item: parts[0], qty: parseInt(parts[1]) || 0, revenue: parseFloat(parts[2]) || 0 });
+                    }
+                });
+            }
+            if (items.length === 0) {
+                showToast('No valid data', 'error');
+                return;
+            }
+            const updates = {};
+            items.forEach(item => {
+                const newKey = db.ref().child('sales').push().key;
+                updates['/sales/' + newKey] = {
+                    id: newKey,
+                    date: date,
+                    channel: channel,
+                    itemName: item.item,
+                    qtySold: item.qty,
+                    revenue: item.revenue,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+            });
+            db.ref().update(updates).then(() => {
+                document.getElementById('salesForm').reset();
+                document.getElementById('preview').style.display = 'none';
+                document.getElementById('fileLabel').classList.remove('has-file');
+                document.getElementById('fileLabel').innerHTML = '<div style="font-size: 2rem; margin-bottom: 10px;">📷</div><div>Click to take photo</div>';
+                document.getElementById('manualEntry').style.display = 'none';
+                document.getElementById('submitBtn').disabled = true;
+                extractedData = [];
+                showToast('Saved ' + items.length + ' items!', 'success');
+            }).catch(error => {
+                showToast('Error: ' + error.message, 'error');
+            });
+        }
+        function deleteEntry(id) {
+            if (!confirm('Delete this entry?')) return;
+            db.ref('sales/' + id).remove().then(() => showToast('Deleted', 'success')).catch(err => showToast('Error', 'error'));
+        }
+        function clearAllData() {
+            if (!confirm('Delete ALL data?')) return;
+            if (!confirm('Really sure?')) return;
+            db.ref('sales').remove().then(() => showToast('All cleared', 'success')).catch(err => showToast('Error', 'error'));
+        }
+        function updateItemFilter() {
+            const items = [...new Set(salesData.map(d => d.itemName))].sort();
+            const select = document.getElementById('filterItem');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="all">All Items</option>';
+            items.forEach(item => {
+                select.innerHTML += '<option value="' + item + '">' + item + '</option>';
+            });
+            if (items.includes(currentVal)) select.value = currentVal;
+        }
+        function getFilteredData() {
+            const channel = document.getElementById('filterChannel').value;
+            const item = document.getElementById('filterItem').value;
+            const fromDate = document.getElementById('filterDateFrom').value;
+            const toDate = document.getElementById('filterDateTo').value;
+            return salesData.filter(d => {
+                if (channel !== 'all' && d.channel !== channel) return false;
+                if (item !== 'all' && d.itemName !== item) return false;
+                if (fromDate && d.date < fromDate) return false;
+                if (toDate && d.date > toDate) return false;
+                return true;
+            });
+        }
+        function updateDashboard() {
+            const filtered = getFilteredData();
+            const totalRevenue = filtered.reduce((sum, d) => sum + (d.revenue || 0), 0);
+            const totalQty = filtered.reduce((sum, d) => sum + (d.qtySold || 0), 0);
+            const totalTransactions = filtered.length;
+            const avgOrder = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+            document.getElementById('totalRevenue').textContent = '₹' + Math.round(totalRevenue).toLocaleString();
+            document.getElementById('totalQty').textContent = totalQty.toLocaleString();
+            document.getElementById('totalTransactions').textContent = totalTransactions.toLocaleString();
+            document.getElementById('avgOrderValue').textContent = '₹' + Math.round(avgOrder).toLocaleString();
+            updateChart(filtered);
+            updateTable(filtered);
+        }
+        function updateChart(data) {
+            const ctx = document.getElementById('salesChart').getContext('2d');
+            const dateMap = {};
+            data.forEach(d => {
+                if (!dateMap[d.date]) dateMap[d.date] = 0;
+                dateMap[d.date] += (d.revenue || 0);
+            });
+            const sortedDates = Object.keys(dateMap).sort();
+            const revenues = sortedDates.map(d => dateMap[d]);
+            if (chartInstance) chartInstance.destroy();
+            if (data.length === 0) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                return;
+            }
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedDates.map(d => new Date(d).toLocaleDateString()),
+                    datasets: [{
+                        label: 'Revenue (₹)',
+                        data: revenues,
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#ec4899',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Revenue: ₹' + Math.round(context.parsed.y).toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '₹' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        function updateTable(data) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No data</td></tr>';
+                return;
+            }
+            const sorted = [...data].sort((a, b) => new Date(b.date) - new Date(a.date));
+            sorted.forEach(d => {
+                const row = document.createElement('tr');
+                const badgeClass = 'badge-' + d.channel.toLowerCase().replace(' ', '-');
+                row.innerHTML = '<td>' + new Date(d.date).toLocaleDateString() + '</td><td><span class="badge ' + badgeClass + '">' + d.channel + '</span></td><td>' + d.itemName + '</td><td>' + d.qtySold + '</td><td>₹' + Math.round(d.revenue).toLocaleString() + '</td><td><button class="delete-btn" onclick="deleteEntry(\'' + d.id + '\')">Delete</button></td>';
+                tbody.appendChild(row);
+            });
+        }
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tab + 'Tab').classList.add('active');
+            if (tab === 'chart') updateDashboard();
+        }
+        function downloadCSV() {
+            const filtered = getFilteredData();
+            if (filtered.length === 0) {
+                showToast('No data', 'error');
+                return;
+            }
+            const headers = ['Date', 'Channel', 'Item Name', 'Qty Sold', 'Revenue'];
+            const csvContent = [headers.join(','), ...filtered.map(d => [d.date, d.channel, '"' + d.itemName + '"', d.qtySold, Math.round(d.revenue)].join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sales_data_' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showToast('CSV downloaded', 'success');
+        }
+        function showToast(message, type) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const msg = document.getElementById('toastMessage');
+            icon.textContent = type === 'success' ? '✅' : '❌';
+            msg.textContent = message;
+            toast.className = 'toast' + (type === 'error' ? ' error' : '');
+            toast.style.display = 'flex';
+            setTimeout(() => { toast.style.display = 'none'; }, 3000);
+        }
+    </script>
+</body>
+</html>
